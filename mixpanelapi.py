@@ -98,14 +98,47 @@ class Mixpanel(object):
                 print "Dumping json to " + output_file
                 json.dump(data, output)
 
-    @staticmethod
-    def _filename_to_list(filename):
+    def properties_from_csv_row(self, row, header, ignore_columns):
+        props = {}
+        for h, prop in enumerate(header):
+            # handle a strange edge case where the length of the row is longer than the length of the header.  We do this to prevent an out of range error.
+            x = h
+            if x > len(row) - 1:
+                x = len(row) - 1
+            if row[x] == '' or prop in ignore_columns:
+                continue
+            else:
+                props[prop] = row[x]
+        return props
+
+    def _filename_to_list(self, filename):
         item_list = []
         try:
-            with open(filename, 'r') as item_file:
+            with open(filename, 'rbU') as item_file:
                 item_list = json.load(item_file)
-        except:
-            print "Problem loading data from file"
+        except ValueError:
+            with open(filename, 'rbU') as item_file:
+                reader = csv.reader(item_file)
+                header = reader.next()
+                if 'event' in header:
+                    event_name_index = header.index("event")
+                    distinct_id_index = header.index("distinct_id")
+                    time_index = header.index("time")
+                    for row in reader:
+                        props = {'token': self.token, 'distinct_id': row[distinct_id_index],
+                                                'time': row[time_index],
+                                                'ip': 0}
+                        props.update(self.properties_from_csv_row(row, header, ['event', 'distinct_id', 'time']))
+                        event = {'event': row[event_name_index], 'properties': props}
+                        item_list.append(event)
+                elif '$distinct_id' in header:
+                    distinct_id_index = header.index("$distinct_id")
+                    for row in reader:
+                        props = self.properties_from_csv_row(row, header, ['$distinct_id'])
+                        profile = {'$distinct_id': row[distinct_id_index], '$properties': props}
+                        item_list.append(profile)
+        except IOError:
+            print "Error loading data from file: " + filename
 
         return item_list
 
