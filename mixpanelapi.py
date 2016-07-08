@@ -1,8 +1,10 @@
 import base64
+from time import strftime
 import urllib  # for url encoding
 import urllib2  # for sending requests
 from itertools import chain
 import cStringIO
+import eventlet
 
 try:
     import fastcsv as csv
@@ -21,17 +23,24 @@ except ImportError:
 class Mixpanel(object):
     API_URL = 'https://mixpanel.com/api'
     DATA_URL = 'https://data.mixpanel.com/api'
+    IMPORT_URL = 'https://api.mixpanel.com'
     VERSION = '2.0'
 
-    def __init__(self, api_secret, timeout=120):
+    def __init__(self, api_secret, token=None, timeout=120, pool_size=10):
         self.api_secret = api_secret
+        self.token = token
         self.timeout = timeout
+        self.pool_size = pool_size
 
     def request(self, base_url, methods, params):
-        data = None
-        request_url = '/'.join([base_url, str(self.VERSION)] + methods) + '/?' + self.unicode_urlencode(params)
-        # print request_url
-        headers = {'Authorization': 'Basic {encoded_secret}'.format(encoded_secret=base64.b64encode(self.api_secret))}
+        if base_url == self.IMPORT_URL:
+            data = self.unicode_urlencode(params)
+            request_url = '/'.join([base_url] + methods) + '/'
+        else:
+            data = None
+            request_url = '/'.join([base_url, str(self.VERSION)] + methods) + '/?' + self.unicode_urlencode(params)
+        print request_url
+        headers= {'Authorization': 'Basic {encoded_secret}'.format(encoded_secret=base64.b64encode(self.api_secret))}
         request = urllib2.Request(request_url, data, headers)
         response = urllib2.urlopen(request, timeout=self.timeout)
         return response.read()
@@ -89,13 +98,89 @@ class Mixpanel(object):
                 print "Dumping json to " + output_file
                 json.dump(data, output)
 
-    def export_people(self, params, output_file, format='json'):
+    @staticmethod
+    def _filename_to_list(filename):
+        item_list = []
+        try:
+            with open(filename, 'r') as item_file:
+                item_list = json.load(item_file)
+        except:
+            print "Problem loading data from file"
+
+        return item_list
+
+    def _send_batch(self, endpoint, batch):
+        payload = {"data": base64.b64encode(json.dumps(batch)), "verbose": 1}
+        message = self.request(self.IMPORT_URL, [endpoint], payload)
+        print "Sent " + str(len(batch)) + " items on " + strftime("%Y-%m-%d %H:%M:%S") + "!"
+        print message
+        if json.loads(message)['status'] != 1:
+            raise RuntimeError('import failed')
+
+    def export_people(self, output_file, params={}, format='json'):
         profiles = self.query_engage(params)
         self._export_data(profiles, output_file, format)
 
-    def export_events(self, params, output_file, format='json'):
+    def export_events(self, output_file, params, format='json'):
         events = self.query_export(params)
         self._export_data(events, output_file, format)
+
+    def import_events(self, data, timezone_offset=0):
+        event_list = []
+        if isinstance(data, basestring):
+            event_list = self._filename_to_list(data)
+        elif isinstance(data, list):
+            event_list = data
+        else:
+            print "data parameter must be a filename or a list of events"
+
+        pool = eventlet.GreenPool(size=self.pool_size)  # increase the size if you have more RAM available
+        batch = []
+        for event in event_list:
+            assert ("time" in event['properties']), "Must specify a backdated time"
+            assert ("distinct_id" in event['properties']), "Must specify a distinct ID"
+            event['properties']['time'] = str(
+                int(event['properties']['time']) - (timezone_offset * 3600))  # transforms timestamp to UTC
+            if "token" not in event['properties']:
+                assert self.token, "Events must contain a token or one must be supplied on initialization"
+                event['properties']["token"] = self.token
+            batch.append(event)
+            if len(batch) == 50:
+                pool.spawn(self._send_batch, 'import', batch)
+                batch = []
+        if len(batch):
+            self._send_batch('import', batch)
+            print str(batch) + "\n" + "Sent remaining %d events!" % len(batch)
+        pool.waitall()
+
+    def import_people(self, data):
+        profile_list = []
+        if isinstance(data, basestring):
+            profile_list = self._filename_to_list(data)
+        elif isinstance(data, list):
+            profile_list = data
+        else:
+            print "data parameter must be a filename or a list of events"
+
+        pool = eventlet.GreenPool(size=self.pool_size)  # increase the size if you have more RAM available
+        batch = []
+
+        for profile in profile_list:
+            params = {
+                '$ignore_time': 'true',
+                '$ip': 0,
+                'token': self.token,
+                '$distinct_id': profile['$distinct_id'],
+                '$set': profile['$properties']
+            }
+            batch.append(params)
+            if len(batch) == 50:
+                pool.spawn(self._send_batch, 'engage', batch)
+                batch = []
+        if len(batch):
+            self._send_batch('engage', batch)
+            print str(batch) + "\n" + "Sent remaining %d updates!" % len(batch)
+        pool.waitall()
 
     @staticmethod
     def write_to_csv(items, output_file):
