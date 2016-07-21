@@ -7,6 +7,7 @@ import math
 import itertools
 from multiprocessing.pool import ThreadPool
 
+
 class ConcurrentPaginator(object):
     """
     Concurrently fetches all pages in a paginated collection.
