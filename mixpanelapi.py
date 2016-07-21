@@ -6,6 +6,7 @@ from itertools import chain
 import cStringIO
 from multiprocessing.pool import ThreadPool
 from paginator import ConcurrentPaginator
+import logging
 
 try:
     import fastcsv as csv
@@ -27,12 +28,17 @@ class Mixpanel(object):
     IMPORT_URL = 'https://api.mixpanel.com'
     VERSION = '2.0'
 
-    def __init__(self, api_secret, token=None, timeout=120, pool_size=10, max_retries=10):
+    def __init__(self, api_secret, token=None, timeout=120, pool_size=10, max_retries=10, log_level='warning'):
         self.api_secret = api_secret
         self.token = token
         self.timeout = timeout
         self.pool_size = pool_size
         self.max_retries = max_retries
+        if log_level == 'debug':
+            log_level = logging.DEBUG
+        else:
+            log_level = logging.WARNING
+        logging.basicConfig(level=log_level)
 
     @staticmethod
     def unicode_urlencode(params):
@@ -47,9 +53,10 @@ class Mixpanel(object):
 
     @staticmethod
     def response_handler_callback(response):
-        print response
         if json.loads(response)['status'] != 1:
+            logging.warning("Bad API response: " + response)
             raise RuntimeError('import failed')
+        logging.debug("API Response: " + response)
 
     @staticmethod
     def write_to_csv(items, output_file):
@@ -134,7 +141,7 @@ class Mixpanel(object):
                         profile = {'$distinct_id': row[distinct_id_index], '$properties': props}
                         item_list.append(profile)
         except IOError:
-            print "Error loading data from file: " + filename
+            logging.warning("Error loading data from file: " + filename)
 
         return item_list
 
@@ -144,7 +151,7 @@ class Mixpanel(object):
         if 'results' in data:
             return data
         else:
-            print "Invalid response from/engage: " + response
+            logging.warning("Invalid response from /engage: " + response)
 
     def _export_data(self, data, output_file, format='json'):
         with open(output_file, 'w') as output:
@@ -153,24 +160,26 @@ class Mixpanel(object):
             elif format == 'csv':
                 self.write_to_csv(data, output)
             else:
-                print "Invalid format - must be 'json' or 'csv': format = " + str(format)
-                print "Dumping json to " + output_file
+                msg = "Invalid format - must be 'json' or 'csv': format = " + str(format) + '\n' \
+                    + "Dumping json to " + output_file
+                logging.warning(msg)
                 json.dump(data, output)
 
     def _send_batch(self, endpoint, batch, retries=0):
         payload = {"data": base64.b64encode(json.dumps(batch)), "verbose": 1}
         try:
             response = self.request(self.IMPORT_URL, [endpoint], payload)
-            print "Sent " + str(len(batch)) + " items on " + strftime("%Y-%m-%d %H:%M:%S") + "!"
+            msg = "Sent " + str(len(batch)) + " items on " + strftime("%Y-%m-%d %H:%M:%S") + "!"
+            logging.debug(msg)
             return response
         except urllib2.HTTPError as err:
             if err.code == 503:
                 if retries < self.max_retries:
-                    print "HTTP Error 503: Retry #" + str(retries+1)
+                    logging.warning("HTTP Error 503: Retry #" + str(retries+1))
                     self._send_batch(endpoint, batch, retries+1)
                 else:
-                    print "Failed to import batch, dumping payload to backup file"
-                    with open('failed_to_import.txt', 'a') as backup:
+                    logging.warning("Failed to import batch, dumping to file: import_backup.txt")
+                    with open('import_backup.txt', 'a') as backup:
                         json.dumps(backup, batch)
                         backup.write('\n')
             else:
@@ -183,11 +192,13 @@ class Mixpanel(object):
         else:
             data = None
             request_url = '/'.join([base_url, str(self.VERSION)] + methods) + '/?' + self.unicode_urlencode(params)
-        print request_url
+        logging.debug("Request URL: " + request_url)
         headers = {'Authorization': 'Basic {encoded_secret}'.format(encoded_secret=base64.b64encode(self.api_secret))}
         request = urllib2.Request(request_url, data, headers)
         response = urllib2.urlopen(request, timeout=self.timeout)
-        return response.read()
+        response_data = response.read()
+        logging.debug("Response: " + response_data)
+        return response_data
 
     def query_export(self, params):
         response = self.request(self.DATA_URL, ['export'], params)
@@ -218,7 +229,7 @@ class Mixpanel(object):
         elif isinstance(data, list):
             event_list = data
         else:
-            print "data parameter must be a filename or a list of events"
+            logging.warning("data parameter must be a filename or a list of events")
 
         pool = ThreadPool(processes=self.pool_size)
         batch = []
@@ -246,7 +257,7 @@ class Mixpanel(object):
         elif isinstance(data, list):
             profile_list = data
         else:
-            print "data parameter must be a filename or a list of events"
+            logging.warning("data parameter must be a filename or a list of People profiles")
 
         pool = ThreadPool(processes=self.pool_size)
         batch = []
