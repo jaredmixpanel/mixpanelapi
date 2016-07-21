@@ -4,7 +4,8 @@ import urllib  # for url encoding
 import urllib2  # for sending requests
 from itertools import chain
 import cStringIO
-import eventlet
+from multiprocessing.pool import ThreadPool
+from paginator import ConcurrentPaginator
 
 try:
     import fastcsv as csv
@@ -56,18 +57,17 @@ class Mixpanel(object):
         result = urllib.urlencode([(k, isinstance(v, unicode) and v.encode('utf-8') or v) for k, v in params])
         return result
 
-    def query_engage(self, params):
+    def query_engage(self, params={}):
+        paginator = ConcurrentPaginator(self._get_page, concurrency=self.pool_size)
+        return paginator.fetch_all(params)
+
+    def _get_page(self, params):
         response = self.request(self.API_URL, ['engage'], params)
-        first_page = json.loads(response)
-        try:
-            profiles = first_page['results']
-            if first_page['total'] > first_page['page_size']:
-                self._paginator(first_page['session_id'], first_page['page'], first_page['total'], profiles)
-            else:
-                pass
-            return profiles
-        except KeyError:
-            print "Invalid response from /engage: " + response
+        data = json.loads(response)
+        if 'results' in data:
+            return data
+        else:
+            print "Invalid response from/engage: " + response
 
     def query_export(self, params):
         response = self.request(self.DATA_URL, ['export'], params)
@@ -146,9 +146,7 @@ class Mixpanel(object):
         payload = {"data": base64.b64encode(json.dumps(batch)), "verbose": 1}
         message = self.request(self.IMPORT_URL, [endpoint], payload)
         print "Sent " + str(len(batch)) + " items on " + strftime("%Y-%m-%d %H:%M:%S") + "!"
-        print message
-        if json.loads(message)['status'] != 1:
-            raise RuntimeError('import failed')
+        return message
 
     def export_people(self, output_file, params={}, format='json'):
         profiles = self.query_engage(params)
@@ -167,7 +165,7 @@ class Mixpanel(object):
         else:
             print "data parameter must be a filename or a list of events"
 
-        pool = eventlet.GreenPool(size=self.pool_size)  # increase the size if you have more RAM available
+        pool = ThreadPool(processes=self.pool_size)
         batch = []
         for event in event_list:
             assert ("time" in event['properties']), "Must specify a backdated time"
@@ -179,12 +177,18 @@ class Mixpanel(object):
                 event['properties']["token"] = self.token
             batch.append(event)
             if len(batch) == 50:
-                pool.spawn(self._send_batch, 'import', batch)
+                pool.apply_async(self._send_batch, args=('import', batch), callback=self.response_handler_callback)
                 batch = []
         if len(batch):
-            self._send_batch('import', batch)
-            print str(batch) + "\n" + "Sent remaining %d events!" % len(batch)
-        pool.waitall()
+            pool.apply_async(self._send_batch, args=('import', batch), callback=self.response_handler_callback)
+        pool.close()
+        pool.join()
+
+    @staticmethod
+    def response_handler_callback(response):
+        print response
+        if json.loads(response)['status'] != 1:
+            raise RuntimeError('import failed')
 
     def import_people(self, data):
         profile_list = []
@@ -195,7 +199,7 @@ class Mixpanel(object):
         else:
             print "data parameter must be a filename or a list of events"
 
-        pool = eventlet.GreenPool(size=self.pool_size)  # increase the size if you have more RAM available
+        pool = ThreadPool(processes=self.pool_size)
         batch = []
 
         for profile in profile_list:
@@ -208,12 +212,12 @@ class Mixpanel(object):
             }
             batch.append(params)
             if len(batch) == 50:
-                pool.spawn(self._send_batch, 'engage', batch)
+                pool.apply_async(self._send_batch, args=('engage', batch), callback=self.response_handler_callback)
                 batch = []
         if len(batch):
-            self._send_batch('engage', batch)
-            print str(batch) + "\n" + "Sent remaining %d updates!" % len(batch)
-        pool.waitall()
+            pool.apply_async(self._send_batch, args=('engage', batch), callback=self.response_handler_callback)
+        pool.close()
+        pool.join()
 
     @staticmethod
     def write_to_csv(items, output_file):
