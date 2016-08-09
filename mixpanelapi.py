@@ -7,6 +7,8 @@ import cStringIO
 from multiprocessing.pool import ThreadPool
 from paginator import ConcurrentPaginator
 import logging
+from ast import literal_eval
+
 
 try:
     import fastcsv as csv
@@ -110,7 +112,11 @@ class Mixpanel(object):
             if row[x] == '' or prop in ignored_columns:
                 continue
             else:
-                props[prop] = row[x]
+                try:
+                    p = literal_eval(row[x])
+                    props[prop] = p
+                except (SyntaxError, ValueError) as e:
+                    props[prop] = row[x]
         return props
 
     @staticmethod
@@ -256,6 +262,12 @@ class Mixpanel(object):
         profiles = self.query_engage(params)
         Mixpanel._export_data(profiles, output_file, format)
 
+    def import_events(self, data, timezone_offset=0):
+        self._import_data(data, 'events', timezone_offset=timezone_offset)
+
+    def import_people(self, data, ignore_alias=False):
+        self._import_data(data, 'people', ignore_alias=ignore_alias)
+
     def _import_data(self, data, item_type, timezone_offset=0, ignore_alias=False):
         item_list = []
         if isinstance(data, basestring):
@@ -292,10 +304,4 @@ class Mixpanel(object):
             pool.apply_async(self._send_batch, args=(endpoint, batch), callback=Mixpanel.response_handler_callback)
         pool.close()
         pool.join()
-
-    def import_events(self, data, timezone_offset=0):
-        self._import_data(data, 'events', timezone_offset=timezone_offset)
-
-    def import_people(self, data, ignore_alias=False):
-        self._import_data(data, 'people', ignore_alias=ignore_alias)
 
