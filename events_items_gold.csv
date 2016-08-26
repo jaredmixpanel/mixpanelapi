@@ -1,0 +1,4 @@
+event,Invited User?,App Version,Referrering Domain,$model,$region,$import,Campaign Name,distinct_id,$city,time,$os,Registration Date,Campaign Source,mp_country_code
+Registration Complete,False,3,http://duckduckgo.com,"iPad3,4",,True,Buy Now,693888f8-235f-44dc-8987-ab4f18c20e67,,1469059211,iPhone OS,2016-07-21T00:00:11,Email,US
+Registration Complete,False,3,http://bing.com,"iPhone6,1",,True,Organic,16bc248f-446d-418f-85cd-c76cf26ce29c,,1469059215,iPhone OS,2016-07-21T00:00:15,Organic,US
+App Install,False,3,Organic,"iPhone6,1",Michigan,True,Super Sale,1cb813e7-72c6-4a8f-a34a-68bf26d43652,Dearborn,1469059217,iPhone OS,,Twitter,US

@@ -1,14 +1,14 @@
 import base64
-from time import strftime
 import urllib  # for url encoding
 import urllib2  # for sending requests
-from itertools import chain
 import cStringIO
+import logging
+from time import strftime
+from itertools import chain
 from multiprocessing.pool import ThreadPool
 from paginator import ConcurrentPaginator
-import logging
 from ast import literal_eval
-
+from copy import deepcopy
 
 try:
     import fastcsv as csv
@@ -124,7 +124,7 @@ class Mixpanel(object):
         event_index = (header.index("event") if event_index is None else event_index)
         distinct_id_index = (header.index("distinct_id") if distinct_id_index is None else distinct_id_index)
         time_index = (header.index("time") if time_index is None else time_index)
-        props = {'distinct_id': row[distinct_id_index], 'time': row[time_index]}
+        props = {'distinct_id': row[distinct_id_index], 'time': int(row[time_index])}
         props.update(Mixpanel.properties_from_csv_row(row, header, ['event', 'distinct_id', 'time']))
         event = {'event': row[event_index], 'properties': props}
         return event
@@ -151,7 +151,8 @@ class Mixpanel(object):
                     distinct_id_index = header.index("distinct_id")
                     time_index = header.index("time")
                     for row in reader:
-                        event = Mixpanel.event_object_from_csv_row(row, header, event_index, distinct_id_index, time_index)
+                        event = Mixpanel.event_object_from_csv_row(row, header, event_index, distinct_id_index,
+                                                                   time_index)
                         item_list.append(event)
                 elif '$distinct_id' in header:
                     distinct_id_index = header.index("$distinct_id")
@@ -180,10 +181,11 @@ class Mixpanel(object):
     def _prep_event_for_import(event, token, timezone_offset):
         assert ("time" in event['properties']), "Must specify a backdated time"
         assert ("distinct_id" in event['properties']), "Must specify a distinct ID"
-        event['properties']['time'] = str(
-            int(event['properties']['time']) - (timezone_offset * 3600))  # transforms timestamp to UTC
-        event['properties']["token"] = token
-        return event
+        event_copy = deepcopy(event)
+        event_copy['properties']['time'] = int(event['properties']['time']) - (
+            timezone_offset * 3600)  # transforms timestamp to UTC
+        event_copy['properties']['token'] = token
+        return event_copy
 
     @staticmethod
     def _prep_profile_for_import(profile, token, ignore_alias):
@@ -209,15 +211,15 @@ class Mixpanel(object):
     def _send_batch(self, endpoint, batch, retries=0):
         payload = {"data": base64.b64encode(json.dumps(batch)), "verbose": 1}
         try:
-            response = self.request(Mixpanel.IMPORT_URL, [endpoint], payload)
+            response = self.request(Mixpanel.IMPORT_URL, [endpoint], payload, 'POST')
             msg = "Sent " + str(len(batch)) + " items on " + strftime("%Y-%m-%d %H:%M:%S") + "!"
             logging.debug(msg)
             return response
         except urllib2.HTTPError as err:
             if err.code == 503:
                 if retries < self.max_retries:
-                    logging.warning("HTTP Error 503: Retry #" + str(retries+1))
-                    self._send_batch(endpoint, batch, retries+1)
+                    logging.warning("HTTP Error 503: Retry #" + str(retries + 1))
+                    self._send_batch(endpoint, batch, retries + 1)
                 else:
                     logging.warning("Failed to import batch, dumping to file: import_backup.txt")
                     with open('import_backup.txt', 'a') as backup:
@@ -226,13 +228,14 @@ class Mixpanel(object):
             else:
                 raise
 
-    def request(self, base_url, methods, params):
-        if base_url == Mixpanel.IMPORT_URL:
+    def request(self, base_url, path_components, params, method='GET'):
+        if method == 'POST':
             data = Mixpanel.unicode_urlencode(params)
-            request_url = '/'.join([base_url] + methods) + '/'
+            request_url = '/'.join([base_url] + path_components) + '/'
         else:
             data = None
-            request_url = '/'.join([base_url, str(Mixpanel.VERSION)] + methods) + '/?' + Mixpanel.unicode_urlencode(params)
+            request_url = '/'.join(
+                [base_url, str(Mixpanel.VERSION)] + path_components) + '/?' + Mixpanel.unicode_urlencode(params)
         logging.debug("Request URL: " + request_url)
         headers = {'Authorization': 'Basic {encoded_secret}'.format(encoded_secret=base64.b64encode(self.api_secret))}
         request = urllib2.Request(request_url, data, headers)
@@ -304,4 +307,3 @@ class Mixpanel(object):
             pool.apply_async(self._send_batch, args=(endpoint, batch), callback=Mixpanel.response_handler_callback)
         pool.close()
         pool.join()
-
