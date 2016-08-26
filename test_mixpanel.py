@@ -15,7 +15,9 @@ import uuid
 class TestMixpanel(TestCase):
     def setUp(self):
         self.maxDiff = None
+        # Main test project: https://mixpanel.com/report/1039339/
         self.mixpanel = Mixpanel('691bfbf163af2deff808fcc3d4c2a9e8', 'd92eb752ebbffe57556ff6ea4f8a9125')
+        # Import only test project: https://mixpanel.com/report/1039477/
         self.import_project = Mixpanel('0360aa57ccea3a589d216aa6a2c59a35', '8b3b4ca883462e2d98d3879b5d259e59')
 
     def test_unicode_urlencode(self):
@@ -512,7 +514,8 @@ class TestMixpanel(TestCase):
             self.import_project.import_people('people_export_gold.json')
             # Add a delay to ensure all imported profiles are ready for export
             time.sleep(10)
-            test_json_data = self.import_project.query_engage()
+            params = {'where': '(datetime(1472129993) > properties["Registration Date"])'}
+            test_json_data = self.import_project.query_engage(params)
             self.assertItemsEqual(gold_json_data, test_json_data)
 
     # ANOTHER MANUAL RESET IS REQUIRED HERE
@@ -534,7 +537,8 @@ class TestMixpanel(TestCase):
             self.import_project.import_people('people_export_gold.csv')
             # Add a delay to ensure all imported profiles are ready for export
             time.sleep(10)
-            test_json_data = self.import_project.query_engage()
+            params = {'where': '(datetime(1472129993) > properties["Registration Date"])'}
+            test_json_data = self.import_project.query_engage(params)
             self.assertItemsEqual(gold_json_data, test_json_data)
 
     # def test__import_data(self):
