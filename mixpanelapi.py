@@ -5,6 +5,7 @@ import cStringIO
 import logging
 from time import strftime
 from itertools import chain
+from multiprocessing import cpu_count
 from multiprocessing.pool import ThreadPool
 from paginator import ConcurrentPaginator
 from ast import literal_eval
@@ -30,10 +31,12 @@ class Mixpanel(object):
     IMPORT_URL = 'https://api.mixpanel.com'
     VERSION = '2.0'
 
-    def __init__(self, api_secret, token=None, timeout=120, pool_size=10, max_retries=10, debug=False):
+    def __init__(self, api_secret, token=None, timeout=120, pool_size=None, max_retries=10, debug=False):
         self.api_secret = api_secret
         self.token = token
         self.timeout = timeout
+        if pool_size is None:
+            pool_size = cpu_count() * 2
         self.pool_size = pool_size
         self.max_retries = max_retries
         if debug:
