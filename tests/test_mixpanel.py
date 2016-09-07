@@ -1,5 +1,5 @@
 from unittest import TestCase
-from mixpanel_api import Mixpanel
+from mixpanel_api.mixpanel_api import Mixpanel
 import os
 import csv
 import json
