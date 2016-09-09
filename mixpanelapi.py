@@ -182,8 +182,12 @@ class Mixpanel(object):
 
     @staticmethod
     def _prep_event_for_import(event, token, timezone_offset):
-        assert ("time" in event['properties']), "Must specify a backdated time"
-        assert ("distinct_id" in event['properties']), "Must specify a distinct ID"
+        if ('time' not in event['properties']) or ('distinct_id' not in event['properties']):
+            logging.warning('Event missing time or distinct_id property, dumping to invalid_events.txt!')
+            with open('invalid_events.txt', 'a') as invalid:
+                json.dump(event, invalid)
+                invalid.write('\n')
+                return
         event_copy = deepcopy(event)
         event_copy['properties']['time'] = int(event['properties']['time']) - (
             timezone_offset * 3600)  # transforms timestamp to UTC
@@ -192,7 +196,6 @@ class Mixpanel(object):
 
     @staticmethod
     def _prep_profile_for_import(profile, token, ignore_alias):
-        assert token, "Project token required!"
         params = {
             '$ignore_time': True,
             '$ignore_alias': ignore_alias,
@@ -226,7 +229,7 @@ class Mixpanel(object):
                 else:
                     logging.warning("Failed to import batch, dumping to file: import_backup.txt")
                     with open('import_backup.txt', 'a') as backup:
-                        json.dumps(backup, batch)
+                        json.dump(batch, backup)
                         backup.write('\n')
             else:
                 raise
@@ -275,6 +278,7 @@ class Mixpanel(object):
         self._import_data(data, 'people', ignore_alias=ignore_alias)
 
     def _import_data(self, data, item_type, timezone_offset=0, ignore_alias=False):
+        assert self.token, "Project token required for import!"
         item_list = []
         if isinstance(data, basestring):
             item_list = Mixpanel.list_from_items_filename(data)
@@ -302,7 +306,8 @@ class Mixpanel(object):
         for item in item_list:
             args[0] = item
             params = prep_function(*args)
-            batch.append(params)
+            if params:
+                batch.append(params)
             if len(batch) == 50:
                 pool.apply_async(self._send_batch, args=(endpoint, batch), callback=Mixpanel.response_handler_callback)
                 batch = []
