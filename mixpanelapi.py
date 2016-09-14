@@ -3,7 +3,10 @@ import urllib  # for url encoding
 import urllib2  # for sending requests
 import cStringIO
 import logging
-from time import strftime
+import gzip
+import shutil
+import time
+import os
 from itertools import chain
 from multiprocessing import cpu_count
 from multiprocessing.pool import ThreadPool
@@ -168,8 +171,15 @@ class Mixpanel(object):
         return item_list
 
     @staticmethod
-    def _export_data(data, output_file, format='json'):
-        with open(output_file, 'w') as output:
+    def gzip_file(filename):
+        gzip_filename = filename + '.gz'
+        with open(filename, 'rb') as f_in, gzip.open(gzip_filename, 'wb') as f_out:
+            shutil.copyfileobj(f_in, f_out)
+
+
+    @staticmethod
+    def _export_data(data, output_file, format='json', gzip=False):
+        with open(output_file, 'w+') as output:
             if format == 'json':
                 json.dump(data, output)
             elif format == 'csv':
@@ -180,10 +190,11 @@ class Mixpanel(object):
                 logging.warning(msg)
                 json.dump(data, output)
 
+
     @staticmethod
     def _prep_event_for_import(event, token, timezone_offset):
         if ('time' not in event['properties']) or ('distinct_id' not in event['properties']):
-            logging.warning('Event missing time or distinct_id property, dumping to invalid_events.txt!')
+            logging.warning('Event missing time or distinct_id property, dumping to invalid_events.txt')
             with open('invalid_events.txt', 'a') as invalid:
                 json.dump(event, invalid)
                 invalid.write('\n')
@@ -218,7 +229,7 @@ class Mixpanel(object):
         payload = {"data": base64.b64encode(json.dumps(batch)), "verbose": 1}
         try:
             response = self.request(Mixpanel.IMPORT_URL, [endpoint], payload, 'POST')
-            msg = "Sent " + str(len(batch)) + " items on " + strftime("%Y-%m-%d %H:%M:%S") + "!"
+            msg = "Sent " + str(len(batch)) + " items on " + time.strftime("%Y-%m-%d %H:%M:%S") + "!"
             logging.debug(msg)
             return response
         except urllib2.HTTPError as err:
@@ -227,7 +238,7 @@ class Mixpanel(object):
                     logging.warning("HTTP Error 503: Retry #" + str(retries + 1))
                     self._send_batch(endpoint, batch, retries + 1)
                 else:
-                    logging.warning("Failed to import batch, dumping to file: import_backup.txt")
+                    logging.warning("Failed to import batch, dumping to file import_backup.txt")
                     with open('import_backup.txt', 'a') as backup:
                         json.dump(batch, backup)
                         backup.write('\n')
@@ -263,13 +274,19 @@ class Mixpanel(object):
         paginator = ConcurrentPaginator(self._get_engage_page, concurrency=self.pool_size)
         return paginator.fetch_all(params)
 
-    def export_events(self, output_file, params, format='json'):
+    def export_events(self, output_file, params, format='json', gzip=False):
         events = self.query_export(params)
         Mixpanel._export_data(events, output_file, format)
+        if gzip:
+            Mixpanel.gzip_file(output_file)
+            os.remove(output_file)
 
-    def export_people(self, output_file, params={}, format='json'):
+    def export_people(self, output_file, params={}, format='json', gzip=False):
         profiles = self.query_engage(params)
         Mixpanel._export_data(profiles, output_file, format)
+        if gzip:
+            Mixpanel.gzip_file(output_file)
+            os.remove(output_file)
 
     def import_events(self, data, timezone_offset=0):
         self._import_data(data, 'events', timezone_offset=timezone_offset)
