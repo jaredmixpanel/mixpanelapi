@@ -305,8 +305,8 @@ class Mixpanel(object):
 
     def people_operation(self, operation, value, profiles=None, query_params=None, ignore_alias=False):
         """:param operation: a string with name of a Mixpanel People operation, like $set or $delete
-        :param value: can be a static value or a function (or lambda) that takes a profile as its only parameter and
-        returns the value to use for the operation
+        :param value: can be a static value applied to all profiles or a function (or lambda) that takes a profile as
+        its only parameter and returns the value to use for the operation on the given profile
         :param profiles: can be a Python list of profiles or the name of a file containing a json array dump of profiles
         :param query_params: params to query engage with (alternative to supplying the profiles param)
         :param ignore_alias: True or False
