@@ -312,12 +312,12 @@ class TestMixpanel(TestCase):
         # self.assertRaises(AssertionError, self.mixpanel._prep_event_for_import, no_time, '123', -7)
         # self.assertRaises(AssertionError, self.mixpanel._prep_event_for_import, no_distinct_id, '123', -7)
 
-    def test__prep_profile_for_import(self):
+    def test__prep_params_for_profile(self):
         input_profile = {'$distinct_id': 'abc123', '$properties': {'prop1': 'val1', 'prop2': 'val2'}}
         gold_profile = {'$ignore_time': True, '$ignore_alias': False, '$set': {'prop1': 'val1', 'prop2': 'val2'},
                         '$token': '123', '$distinct_id': 'abc123', '$ip': 0}
-        test_profile = self.mixpanel._update_params_for_profile(input_profile, '123', '$set',
-                                                                lambda profile: profile['$properties'], False, True)
+        test_profile = self.mixpanel._prep_params_for_profile(input_profile, '123', '$set',
+                                                              lambda profile: profile['$properties'], False, True)
         self.assertEqual(gold_profile, test_profile)
 
     def test__get_engage_page(self):

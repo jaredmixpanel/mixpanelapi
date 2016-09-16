@@ -219,7 +219,7 @@ class Mixpanel(object):
         return event_copy
 
     @staticmethod
-    def _update_params_for_profile(profile, token, operation, value, ignore_alias, dynamic):
+    def _prep_params_for_profile(profile, token, operation, value, ignore_alias, dynamic):
         if dynamic:
             op_value = value(profile)
         else:
@@ -250,7 +250,7 @@ class Mixpanel(object):
         if endpoint == 'import':
             prep_function = Mixpanel._prep_event_for_import
         elif endpoint == 'engage':
-            prep_function = Mixpanel._update_params_for_profile
+            prep_function = Mixpanel._prep_params_for_profile
         else:
             logging.warning('endpoint must be "import" or "engage", found: ' + str(endpoint))
             return
