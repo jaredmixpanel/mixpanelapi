@@ -7,6 +7,7 @@ import gzip
 import shutil
 import time
 import os
+from inspect import isfunction
 from itertools import chain
 from multiprocessing import cpu_count
 from multiprocessing.pool import ThreadPool
@@ -143,6 +144,18 @@ class Mixpanel(object):
         return profile
 
     @staticmethod
+    def list_from_argument(arg):
+        item_list = []
+        if isinstance(arg, basestring):
+            item_list = Mixpanel.list_from_items_filename(arg)
+        elif isinstance(arg, list):
+            item_list = arg
+        else:
+            logging.warning("data parameter must be a filename or a list of items")
+
+        return item_list
+
+    @staticmethod
     def list_from_items_filename(filename):
         item_list = []
         try:
@@ -206,14 +219,19 @@ class Mixpanel(object):
         return event_copy
 
     @staticmethod
-    def _prep_profile_for_import(profile, token, ignore_alias):
+    def _update_params_for_profile(profile, token, operation, value, ignore_alias, dynamic):
+        if dynamic:
+            op_value = value(profile)
+        else:
+            op_value = value
+
         params = {
             '$ignore_time': True,
-            '$ignore_alias': ignore_alias,
             '$ip': 0,
+            '$ignore_alias': ignore_alias,
             '$token': token,
             '$distinct_id': profile['$distinct_id'],
-            '$set': profile['$properties']
+            operation: op_value
         }
         return params
 
@@ -224,6 +242,31 @@ class Mixpanel(object):
             return data
         else:
             logging.warning("Invalid response from /engage: " + response)
+
+    def _dispatch_batches(self, endpoint, item_list, args):
+        pool = ThreadPool(processes=self.pool_size)
+        batch = []
+
+        if endpoint == 'import':
+            prep_function = Mixpanel._prep_event_for_import
+        elif endpoint == 'engage':
+            prep_function = Mixpanel._update_params_for_profile
+        else:
+            logging.warning('endpoint must be "import" or "engage", found: ' + str(endpoint))
+            return
+
+        for item in item_list:
+            args[0] = item
+            params = prep_function(*args)
+            if params:
+                batch.append(params)
+            if len(batch) == 50:
+                pool.apply_async(self._send_batch, args=(endpoint, batch), callback=Mixpanel.response_handler_callback)
+                batch = []
+        if len(batch):
+            pool.apply_async(self._send_batch, args=(endpoint, batch), callback=Mixpanel.response_handler_callback)
+        pool.close()
+        pool.join()
 
     def _send_batch(self, endpoint, batch, retries=0):
         payload = {"data": base64.b64encode(json.dumps(batch)), "verbose": 1}
@@ -260,6 +303,22 @@ class Mixpanel(object):
         response_data = response.read()
         return response_data
 
+    def people_operation(self, operation, value, profiles=None, query_params=None, ignore_alias=False):
+        assert self.token, "Project token required for People operation!"
+        if profiles is not None and query_params is not None:
+            logging.warning("profiles and query_params both provided, please use one or the other")
+            return
+
+        profiles_list = []
+        if profiles:
+            profiles_list = Mixpanel.list_from_argument(profiles)
+
+        if query_params is not None:
+            profiles_list = self.query_engage(query_params)
+
+        dynamic = isfunction(value)
+        self._dispatch_batches('engage', profiles_list, [{}, self.token, operation, value, ignore_alias, dynamic])
+
     def query_export(self, params):
         response = self.request(Mixpanel.DATA_URL, ['export'], params)
         file_like_object = cStringIO.StringIO(response)
@@ -289,46 +348,18 @@ class Mixpanel(object):
             os.remove(output_file)
 
     def import_events(self, data, timezone_offset=0):
-        self._import_data(data, 'events', timezone_offset=timezone_offset)
+        self._import_data(data, 'import', timezone_offset=timezone_offset)
 
     def import_people(self, data, ignore_alias=False):
-        self._import_data(data, 'people', ignore_alias=ignore_alias)
+        self._import_data(data, 'engage', ignore_alias=ignore_alias)
 
-    def _import_data(self, data, item_type, timezone_offset=0, ignore_alias=False):
+    def _import_data(self, data, endpoint, timezone_offset=0, ignore_alias=False):
         assert self.token, "Project token required for import!"
-        item_list = []
-        if isinstance(data, basestring):
-            item_list = Mixpanel.list_from_items_filename(data)
-        elif isinstance(data, list):
-            item_list = data
-        else:
-            logging.warning("data parameter must be a filename or a list of events")
-
-        pool = ThreadPool(processes=self.pool_size)
-        batch = []
+        item_list = Mixpanel.list_from_argument(data)
         args = [{}, self.token]
-
-        if item_type == 'events':
-            endpoint = 'import'
+        if endpoint == 'import':
             args.append(timezone_offset)
-            prep_function = Mixpanel._prep_event_for_import
-        elif item_type == 'people':
-            endpoint = 'engage'
-            args.append(ignore_alias)
-            prep_function = Mixpanel._prep_profile_for_import
-        else:
-            logging.warning('Item type must be "events" or "people", found: ' + str(item_type))
-            return
+        elif endpoint == 'engage':
+            args.extend(['$set', lambda profile: profile['$properties'], ignore_alias, True])
 
-        for item in item_list:
-            args[0] = item
-            params = prep_function(*args)
-            if params:
-                batch.append(params)
-            if len(batch) == 50:
-                pool.apply_async(self._send_batch, args=(endpoint, batch), callback=Mixpanel.response_handler_callback)
-                batch = []
-        if len(batch):
-            pool.apply_async(self._send_batch, args=(endpoint, batch), callback=Mixpanel.response_handler_callback)
-        pool.close()
-        pool.join()
+        self._dispatch_batches(endpoint, item_list, args)
