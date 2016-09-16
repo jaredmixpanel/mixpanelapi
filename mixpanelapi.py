@@ -243,7 +243,7 @@ class Mixpanel(object):
         else:
             logging.warning("Invalid response from /engage: " + response)
 
-    def _dispatch_batches(self, endpoint, item_list, args):
+    def _dispatch_batches(self, endpoint, item_list, prep_args):
         pool = ThreadPool(processes=self.pool_size)
         batch = []
 
@@ -256,8 +256,8 @@ class Mixpanel(object):
             return
 
         for item in item_list:
-            args[0] = item
-            params = prep_function(*args)
+            prep_args[0] = item
+            params = prep_function(*prep_args)
             if params:
                 batch.append(params)
             if len(batch) == 50:
