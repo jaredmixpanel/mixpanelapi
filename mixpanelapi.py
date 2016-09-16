@@ -304,6 +304,13 @@ class Mixpanel(object):
         return response_data
 
     def people_operation(self, operation, value, profiles=None, query_params=None, ignore_alias=False):
+        """:param operation: a string with name of a Mixpanel People operation, like $set or $delete
+        :param value: can be a static value or a function (or lambda) that takes a profile as its only parameter and
+        returns the value to use for the operation
+        :param profiles: can be a Python list of profiles or the name of a file containing a json array dump of profiles
+        :param query_params: params to query engage with (alternative to supplying the profiles param)
+        :param ignore_alias: True or False
+        """
         assert self.token, "Project token required for People operation!"
         if profiles is not None and query_params is not None:
             logging.warning("profiles and query_params both provided, please use one or the other")
