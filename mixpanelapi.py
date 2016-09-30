@@ -7,6 +7,7 @@ import gzip
 import shutil
 import time
 import os
+import datetime
 from inspect import isfunction
 from itertools import chain
 from multiprocessing import cpu_count
@@ -27,6 +28,11 @@ except ImportError:
         import json
     except ImportError:
         import simplejson as json
+
+try:
+    import ciso8601
+except ImportError:
+    pass
 
 
 class Mixpanel(object):
@@ -235,6 +241,19 @@ class Mixpanel(object):
         }
         return params
 
+    @staticmethod
+    def dt_from_iso(profile):
+        dt = datetime.datetime.min
+        try:
+            last_seen = profile["$properties"]["$last_seen"]
+            try:
+                dt = ciso8601.parse_datetime_unaware(last_seen)
+            except NameError:
+                dt = datetime.datetime.strptime(last_seen, "%Y-%m-%dT%H:%M:%S")
+        except KeyError:
+            return dt
+        return dt
+
     def _get_engage_page(self, params):
         response = self.request(Mixpanel.API_URL, ['engage'], params)
         data = json.loads(response)
@@ -289,6 +308,19 @@ class Mixpanel(object):
                 raise
 
     def request(self, base_url, path_components, params, method='GET'):
+        """
+        Base method for sending HTTP requests to the various Mixpanel APIs
+
+        :param base_url: Ex: https://api.mixpanel.com
+        :type base_url: str
+        :param path_components: endpoint path as list of strings
+        :type path_components: list
+        :param params: dictionary containing the Mixpanel parameters for the API request
+        :type params: dict
+        :param method: GET or POST
+        :type method: str
+        :return: JSON data returned from API
+        """
         if method == 'POST':
             data = Mixpanel.unicode_urlencode(params)
             request_url = '/'.join([base_url] + path_components) + '/'
@@ -304,7 +336,11 @@ class Mixpanel(object):
         return response_data
 
     def people_operation(self, operation, value, profiles=None, query_params=None, ignore_alias=False):
-        """:param operation: a string with name of a Mixpanel People operation, like $set or $delete
+        """
+        Base method for performing any of the People analytics operations
+
+        :param operation: a string with name of a Mixpanel People operation, like $set or $delete
+        :type operation: str
         :param value: can be a static value applied to all profiles or a user-defined function (or lambda) that takes a
         profile as its only parameter and returns the value to use for the operation on the given profile
         :param profiles: can be a Python list of profiles or the name of a file containing a json array dump of profiles
@@ -325,6 +361,52 @@ class Mixpanel(object):
 
         dynamic = isfunction(value)
         self._dispatch_batches('engage', profiles_list, [{}, self.token, operation, value, ignore_alias, dynamic])
+
+    def deduplicate_people(self, profiles=None, prop_to_match='$email', merge_props=False, case_sensitive=False):
+        main_reference = {}
+        update_profiles = []
+        delete_profiles = []
+
+        if profiles is not None:
+            profiles_list = Mixpanel.list_from_argument(profiles)
+        else:
+            selector = '(boolean(properties["' + prop_to_match + '"]) == true)'
+            profiles_list = self.query_engage({'where': selector})
+
+        for profile in profiles_list:
+            try:
+                if case_sensitive:
+                    match_prop = str(profile["$properties"][prop_to_match])
+                else:
+                    match_prop = str(profile["$properties"][prop_to_match]).lower()
+            except KeyError:
+                continue
+
+            if not main_reference.get(match_prop):
+                main_reference[match_prop] = []
+
+            main_reference[match_prop].append(profile)
+
+        for matching_prop, matching_profiles in main_reference.iteritems():
+            if len(matching_profiles) > 1:
+                matching_profiles.sort(key=lambda dupe: Mixpanel.dt_from_iso(dupe))
+                # We create a $delete update for each duplicate profile and at the same time create a
+                # $set_once update for the keeper profile by working through duplicates oldest to newest
+                if merge_props:
+                    prop_update = {"$distinct_id": matching_profiles[-1]["$distinct_id"], "$properties": {}}
+                for x in xrange(len(matching_profiles) - 1):
+                    delete_profiles.append(matching_profiles[x])
+                    if merge_props:
+                        prop_update["$properties"].update(matching_profiles[x]["$properties"])
+                if merge_props and "$last_seen" in prop_update["$properties"]:
+                    del prop_update["$properties"]["$last_seen"]
+                if merge_props:
+                    update_profiles.append(prop_update)
+
+        if merge_props:
+            self.people_operation('$set_once', lambda p: p['$properties'], profiles=update_profiles, ignore_alias=True)
+
+        self.people_operation('$delete', '', profiles=delete_profiles, ignore_alias=True)
 
     def query_export(self, params):
         response = self.request(Mixpanel.DATA_URL, ['export'], params)

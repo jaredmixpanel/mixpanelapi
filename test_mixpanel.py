@@ -496,7 +496,6 @@ class TestMixpanel(TestCase):
             finally:
                 os.remove('people_export.csv')
 
-
     # THE TESTS BELOW REQUIRE MANUALLY RESETTING THE import_mixpanelapi PROJECT - RESET NOW
     # https://mixpanel.com/report/1039391/
 
