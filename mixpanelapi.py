@@ -15,19 +15,8 @@ from multiprocessing.pool import ThreadPool
 from paginator import ConcurrentPaginator
 from ast import literal_eval
 from copy import deepcopy
-
-try:
-    import fastcsv as csv
-except ImportError:
-    import csv
-
-try:
-    import ujson as json
-except ImportError:
-    try:
-        import json
-    except ImportError:
-        import simplejson as json
+import csv
+import json
 
 try:
     import ciso8601
@@ -87,6 +76,7 @@ class Mixpanel(object):
         # flattens to a list of property names
         columns = list(chain.from_iterable(columns))
         subkeys.update(columns)
+        subkeys = sorted(subkeys)
 
         # Create the header
         header = [initial_header_value]
@@ -169,7 +159,7 @@ class Mixpanel(object):
                 item_list = json.load(item_file)
         except ValueError:
             with open(filename, 'rbU') as item_file:
-                reader = csv.reader(item_file)
+                reader = csv.reader(item_file,)
                 header = reader.next()
                 if 'event' in header:
                     event_index = header.index("event")
@@ -197,7 +187,7 @@ class Mixpanel(object):
 
 
     @staticmethod
-    def _export_data(data, output_file, format='json', gzip=False):
+    def _export_data(data, output_file, format='json', compress=False):
         with open(output_file, 'w+') as output:
             if format == 'json':
                 json.dump(data, output)
@@ -208,6 +198,10 @@ class Mixpanel(object):
                       + "Dumping json to " + output_file
                 logging.warning(msg)
                 json.dump(data, output)
+
+        if compress:
+            Mixpanel.gzip_file(output_file)
+            os.remove(output_file)
 
 
     @staticmethod
@@ -335,7 +329,7 @@ class Mixpanel(object):
         response_data = response.read()
         return response_data
 
-    def people_operation(self, operation, value, profiles=None, query_params=None, ignore_alias=False):
+    def people_operation(self, operation, value, profiles=None, query_params=None, ignore_alias=False, backup=False, backup_file=None):
         """
         Base method for performing any of the People analytics operations
 
@@ -346,6 +340,9 @@ class Mixpanel(object):
         :param profiles: can be a Python list of profiles or the name of a file containing a json array dump of profiles
         :param query_params: params to query engage with (alternative to supplying the profiles param)
         :param ignore_alias: True or False
+        :type ignore_alias: bool
+        :param backup: True to create backup file otherwise False (default)
+        :type backup: bool
         """
         assert self.token, "Project token required for People operation!"
         if profiles is not None and query_params is not None:
@@ -359,8 +356,17 @@ class Mixpanel(object):
         if query_params is not None:
             profiles_list = self.query_engage(query_params)
 
+        if backup:
+            if backup_file is None:
+                backup_file = "deletion_backup_" + str(int(time.time())) + ".json"
+            self._export_data(profiles_list, backup_file)
+
         dynamic = isfunction(value)
         self._dispatch_batches('engage', profiles_list, [{}, self.token, operation, value, ignore_alias, dynamic])
+
+    def people_delete(self, profiles=None, query_params=None, backup=True, backup_file=None):
+        self.people_operation('$delete', '', profiles=profiles, query_params=query_params, ignore_alias=True,
+                              backup=backup, backup_file=backup_file)
 
     def deduplicate_people(self, profiles=None, prop_to_match='$email', merge_props=False, case_sensitive=False):
         main_reference = {}
@@ -395,7 +401,7 @@ class Mixpanel(object):
                 if merge_props:
                     prop_update = {"$distinct_id": matching_profiles[-1]["$distinct_id"], "$properties": {}}
                 for x in xrange(len(matching_profiles) - 1):
-                    delete_profiles.append(matching_profiles[x])
+                    delete_profiles.append({'$distinct_id': matching_profiles[x]['$distinct_id']})
                     if merge_props:
                         prop_update["$properties"].update(matching_profiles[x]["$properties"])
                 if merge_props and "$last_seen" in prop_update["$properties"]:
@@ -422,19 +428,13 @@ class Mixpanel(object):
         paginator = ConcurrentPaginator(self._get_engage_page, concurrency=self.pool_size)
         return paginator.fetch_all(params)
 
-    def export_events(self, output_file, params, format='json', gzip=False):
+    def export_events(self, output_file, params, format='json', compress=False):
         events = self.query_export(params)
-        Mixpanel._export_data(events, output_file, format)
-        if gzip:
-            Mixpanel.gzip_file(output_file)
-            os.remove(output_file)
+        Mixpanel._export_data(events, output_file, format=format, compress=compress)
 
-    def export_people(self, output_file, params={}, format='json', gzip=False):
+    def export_people(self, output_file, params={}, format='json', compress=False):
         profiles = self.query_engage(params)
-        Mixpanel._export_data(profiles, output_file, format)
-        if gzip:
-            Mixpanel.gzip_file(output_file)
-            os.remove(output_file)
+        Mixpanel._export_data(profiles, output_file, format=format, compress=compress)
 
     def import_events(self, data, timezone_offset=0):
         self._import_data(data, 'import', timezone_offset=timezone_offset)

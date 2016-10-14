@@ -19,6 +19,8 @@ class TestMixpanel(TestCase):
         self.mixpanel = Mixpanel('691bfbf163af2deff808fcc3d4c2a9e8', 'd92eb752ebbffe57556ff6ea4f8a9125')
         # Import only test project: https://mixpanel.com/report/1039477/
         self.import_project = Mixpanel('0360aa57ccea3a589d216aa6a2c59a35', '8b3b4ca883462e2d98d3879b5d259e59')
+        # For testing token assertion
+        self.no_token = Mixpanel('123')
 
     def test_unicode_urlencode(self):
         params = {'$key 1': 'value!', 'key2': '"Hello, World"', '$list': ['a', '%', '_8']}
@@ -297,20 +299,36 @@ class TestMixpanel(TestCase):
                     os.remove('people_data.csv')
 
     def test__prep_event_for_import(self):
-        input_event = {'event': 'page view',
+        valid_event = {'event': 'page view',
                        'properties': {'distinct_id': 12345, 'prop1': 'val1', 'prop2': 'val2', 'time': 1471503600}}
         gold_event = {'event': 'page view',
                       'properties': {'token': '123', 'distinct_id': 12345, 'prop1': 'val1', 'prop2': 'val2',
                                      'time': 1471528800}}
-        no_time = {'event': 'page view',
-                   'properties': {'distinct_id': 12345, 'prop1': 'val1', 'prop2': 'val2'}}
-        no_distinct_id = {'event': 'page view',
-                          'properties': {'prop1': 'val1', 'prop2': 'val2', 'time': 1471503600}}
-        test_event = self.mixpanel._prep_event_for_import(input_event, '123', -7)
-        self.assertEqual(gold_event, test_event)
-        # TODO change this to test for invalid events file dump
-        # self.assertRaises(AssertionError, self.mixpanel._prep_event_for_import, no_time, '123', -7)
-        # self.assertRaises(AssertionError, self.mixpanel._prep_event_for_import, no_distinct_id, '123', -7)
+        no_time_event = {'event': 'page view',
+                         'properties': {'distinct_id': 12345, 'prop1': 'val1', 'prop2': 'val2'}}
+        no_distinct_id_event = {'event': 'page view',
+                                'properties': {'prop1': 'val1', 'prop2': 'val2', 'time': 1471503600}}
+        test_valid_event = self.mixpanel._prep_event_for_import(valid_event, '123', -7)
+        test_no_time_event = self.mixpanel._prep_event_for_import(no_time_event, '123', -7)
+        test_no_distinct_id_event = self.mixpanel._prep_event_for_import(no_distinct_id_event, '123', -7)
+        self.assertEqual(gold_event, test_valid_event)
+        self.assertIsNone(test_no_time_event)
+        self.assertIsNone(test_no_distinct_id_event)
+        with open('invalid_events_gold.txt', 'r') as g, open('invalid_events.txt') as t:
+            try:
+                gold_file_lines = g.readlines()
+                gold_data = []
+                for line in gold_file_lines:
+                    gold_data.append(json.loads(line))
+
+                test_file_lines = t.readlines()
+                test_data = []
+                for l in test_file_lines:
+                    test_data.append(json.loads(l))
+
+                self.assertItemsEqual(gold_data, test_data)
+            finally:
+                os.remove('invalid_events.txt')
 
     def test__prep_params_for_profile(self):
         input_profile = {'$distinct_id': 'abc123', '$properties': {'prop1': 'val1', 'prop2': 'val2'}}
@@ -434,12 +452,54 @@ class TestMixpanel(TestCase):
             self.assertItemsEqual(gold_data, test_data)
 
     def test_query_engage(self):
-        params = {'where': '(datetime(1472129993) > properties["Registration Date"])'}
+        params = {'where': '(("Kelly" in properties["$first_name"]) and (defined (properties["$first_name"])))'}
+        gold_data = [{u'$distinct_id': u'77d57cbd-ec0b-4e02-93c0-c738a9ed59d8',
+                                                     u'$properties': {u'Invited User?': False, u'App Version': 3,
+                                                                      u'$country_code': u'US', u'$model': u'iPhone5,2',
+                                                                      u'$predict_grade': u'A',
+                                                                      u'$unsubscribed': u':true',
+                                                                      u'Registration Date': u'2016-08-17T01:30:20',
+                                                                      u'$email': u'dance.troll@yahoo.com',
+                                                                      u'$region': u'California',
+                                                                      u'$last_name': u'Cooper',
+                                                                      u'Experiment Group': u'Group B',
+                                                                      u'Campaign Name': u'Huge Discounts!',
+                                                                      u'Referrering Domain': u'http://bing.com',
+                                                                      u'$city': u'Salinas', u'$first_name': u'Kelly',
+                                                                      u'$os': u'iPhone OS',
+                                                                      u'$timezone': u'America/Los_Angeles',
+                                                                      u'Campaign Source': u'Facebook'}},
+                                                    {u'$distinct_id': u'34dcb1f3-f6a6-433b-b402-436717ceaa82',
+                                                     u'$properties': {u'Invited User?': False, u'App Version': 3,
+                                                                      u'$country_code': u'US', u'$model': u'iPad2,5',
+                                                                      u'$predict_grade': u'A',
+                                                                      u'$unsubscribed': u':true',
+                                                                      u'Registration Date': u'2016-08-16T18:23:01',
+                                                                      u'$email': u'hacker.lancer@hotmail.com',
+                                                                      u'$region': u'Pennsylvania',
+                                                                      u'$last_name': u'Burton',
+                                                                      u'Campaign Name': u'Super Sale',
+                                                                      u'Referrering Domain': u'http://facebook.com',
+                                                                      u'$city': u'Hershey', u'$first_name': u'Kelly',
+                                                                      u'$os': u'iPhone OS',
+                                                                      u'$timezone': u'America/New_York',
+                                                                      u'Campaign Source': u'Facebook'}},
+                                                    {u'$distinct_id': u'55c86fe3-1f7e-4842-a276-3b6e7ae4456b',
+                                                     u'$properties': {u'Invited User?': True, u'App Version': 3,
+                                                                      u'$country_code': u'ID', u'$model': u'iPhone5,2',
+                                                                      u'$predict_grade': u'A',
+                                                                      u'$unsubscribed': u':true',
+                                                                      u'$email': u'giant.coward@aol.com',
+                                                                      u'$last_name': u'Fernandez',
+                                                                      u'Campaign Name': u'Huge Discounts!',
+                                                                      u'Referrering Domain': u'http://facebook.com',
+                                                                      u'$first_name': u'Kelly', u'$os': u'iPhone OS',
+                                                                      u'Registration Date': u'2016-08-16T23:57:46',
+                                                                      u'Campaign Source': u'Facebook'}}]
 
-        with open('people_export_gold.json', 'rbU') as f:
-            gold_data = json.load(f)
-            test_data = self.mixpanel.query_engage(params)
-            self.assertItemsEqual(gold_data, test_data)
+        test_data = self.mixpanel.query_engage(params)
+        for item in gold_data:
+            self.assertIn(item, test_data)
 
     def test_export_events_to_json(self):
         params = {'from_date': '2016-07-20', 'to_date': '2016-07-21', 'event': ['App Install', 'Registration Complete']}
@@ -472,15 +532,58 @@ class TestMixpanel(TestCase):
                 os.remove('events_export.csv')
 
     def test_export_people_to_json(self):
-        params = {'where': '(datetime(1472129993) > properties["Registration Date"])'}
-        self.mixpanel.export_people('people_export.json', params)
+        params = {'where': '(("Kelly" in properties["$first_name"]) and (defined (properties["$first_name"])))'}
+        gold_data = [{u'$distinct_id': u'77d57cbd-ec0b-4e02-93c0-c738a9ed59d8',
+                      u'$properties': {u'Invited User?': False, u'App Version': 3,
+                                       u'$country_code': u'US', u'$model': u'iPhone5,2',
+                                       u'$predict_grade': u'A',
+                                       u'$unsubscribed': u':true',
+                                       u'Registration Date': u'2016-08-17T01:30:20',
+                                       u'$email': u'dance.troll@yahoo.com',
+                                       u'$region': u'California',
+                                       u'$last_name': u'Cooper',
+                                       u'Experiment Group': u'Group B',
+                                       u'Campaign Name': u'Huge Discounts!',
+                                       u'Referrering Domain': u'http://bing.com',
+                                       u'$city': u'Salinas', u'$first_name': u'Kelly',
+                                       u'$os': u'iPhone OS',
+                                       u'$timezone': u'America/Los_Angeles',
+                                       u'Campaign Source': u'Facebook'}},
+                     {u'$distinct_id': u'34dcb1f3-f6a6-433b-b402-436717ceaa82',
+                      u'$properties': {u'Invited User?': False, u'App Version': 3,
+                                       u'$country_code': u'US', u'$model': u'iPad2,5',
+                                       u'$predict_grade': u'A',
+                                       u'$unsubscribed': u':true',
+                                       u'Registration Date': u'2016-08-16T18:23:01',
+                                       u'$email': u'hacker.lancer@hotmail.com',
+                                       u'$region': u'Pennsylvania',
+                                       u'$last_name': u'Burton',
+                                       u'Campaign Name': u'Super Sale',
+                                       u'Referrering Domain': u'http://facebook.com',
+                                       u'$city': u'Hershey', u'$first_name': u'Kelly',
+                                       u'$os': u'iPhone OS',
+                                       u'$timezone': u'America/New_York',
+                                       u'Campaign Source': u'Facebook'}},
+                     {u'$distinct_id': u'55c86fe3-1f7e-4842-a276-3b6e7ae4456b',
+                      u'$properties': {u'Invited User?': True, u'App Version': 3,
+                                       u'$country_code': u'ID', u'$model': u'iPhone5,2',
+                                       u'$predict_grade': u'A',
+                                       u'$unsubscribed': u':true',
+                                       u'$email': u'giant.coward@aol.com',
+                                       u'$last_name': u'Fernandez',
+                                       u'Campaign Name': u'Huge Discounts!',
+                                       u'Referrering Domain': u'http://facebook.com',
+                                       u'$first_name': u'Kelly', u'$os': u'iPhone OS',
+                                       u'Registration Date': u'2016-08-16T23:57:46',
+                                       u'Campaign Source': u'Facebook'}}]
 
-        with open('people_export_gold.json', 'rbU') as gold_file, open('people_export.json', 'rbU') as test_file:
-            gold_data = json.load(gold_file)
-            test_data = json.load(test_file)
-            self.assertItemsEqual(gold_data, test_data)
+        self.mixpanel.export_people('export_people.json', params)
+        with open('export_people.json', 'rbU') as test:
+            test_data = json.load(test)
+            for item in gold_data:
+                self.assertIn(item, test_data)
 
-        os.remove('people_export.json')
+        os.remove('export_people.json')
 
     def test_export_people_to_csv(self):
         params = {'where': '(datetime(1472129993) > properties["Registration Date"])'}
@@ -494,7 +597,37 @@ class TestMixpanel(TestCase):
                 test_data = csv.reader(test_file)
                 self.assertItemsEqual(gold_data, test_data)
             finally:
-                os.remove('people_export.csv')
+                pass
+                #os.remove('people_export.csv')
+
+    def test_people_operation(self):
+        self.assertRaises(AssertionError, self.no_token.people_operation, '$set', {'k', 'v'})
+        query_params = {'selector': '((properties["$city"] == "Amsterdam"))'}
+        list = [{'$distinct_id': 'f19d1ece-cde1-4028-97ae-4d74fe45d426', '$properties': {'$city': 'Amsterdam'}},
+                {'$distinct_id': '1b9a8f3f-c249-40e8-b8f7-7ff0a88c1ebb', '$properties': {'$city': 'Amsterdam'}},
+                {'$distinct_id': '08966880-aa70-4363-b171-30527f4260dc', '$properties': {'$city': 'Amsterdam'}},
+                {'$distinct_id': '1f7fb2b4-3df2-4d2e-b720-aff5dc20a31e', '$properties': {'$city': 'Amsterdam'}},
+                {'$distinct_id': '072ddcd7-4065-42ba-af86-56c42459a480', '$properties': {'$city': 'Amsterdam'}},
+                {'$distinct_id': '1a403f78-3d50-4aca-98ce-bd4139d16625', '$properties': {'$city': 'Amsterdam'}}]
+
+        self.mixpanel.people_operation('$set', {'test': True}, query_params=query_params)
+        time.sleep(10)
+        amsterdam_profiles = self.mixpanel.query_engage(query_params)
+        test_profiles = self.mixpanel.query_engage({'selector': '(properties["test"] == true)'})
+        self.assertItemsEqual(amsterdam_profiles, test_profiles)
+        self.mixpanel.people_operation('$set', lambda p: {'test': p['$properties']['$city']}, profiles=list,
+                                       backup=True, backup_file='del_bak.json')
+        time.sleep(10)
+        amsterdam_profiles = self.mixpanel.query_engage(query_params)
+        test_profiles = self.mixpanel.query_engage({'selector': '((properties["test"] == "Amsterdam"))'})
+        self.assertItemsEqual(amsterdam_profiles, test_profiles)
+        with open('del_bak_gold.json', 'rbU') as gold, open('del_bak.json', 'rbU') as test:
+            gold_data = json.load(gold)
+            test_data = json.load(test)
+            self.assertItemsEqual(gold_data, test_data)
+        # Unset test prop so that export tests are not affected
+        self.mixpanel.people_operation('$unset', ['test'], query_params={'selector': '(defined (properties["test"]))'})
+        os.remove('del_bak.json')
 
     # THE TESTS BELOW REQUIRE MANUALLY RESETTING THE import_mixpanelapi PROJECT - RESET NOW
     # https://mixpanel.com/report/1039391/
@@ -534,14 +667,52 @@ class TestMixpanel(TestCase):
             self.assertItemsEqual(gold_json_data, test_json_data)
 
     def test_import_people_csv(self):
-        with open('people_export_gold.json', 'rbU') as gold_json_file:
-            gold_json_data = json.load(gold_json_file)
-            self.import_project.import_people('people_export_gold.csv')
-            # Add a delay to ensure all imported profiles are ready for export
-            time.sleep(10)
-            params = {'where': '(datetime(1472129993) > properties["Registration Date"])'}
-            test_json_data = self.import_project.query_engage(params)
-            self.assertItemsEqual(gold_json_data, test_json_data)
+        params = {'where': '(("Kelly" in properties["$first_name"]) and (defined (properties["$first_name"])))'}
+        gold_data = [{u'$distinct_id': u'77d57cbd-ec0b-4e02-93c0-c738a9ed59d8',
+                      u'$properties': {u'Invited User?': False, u'App Version': 3,
+                                       u'$country_code': u'US', u'$model': u'iPhone5,2',
+                                       u'$predict_grade': u'A',
+                                       u'$unsubscribed': u':true',
+                                       u'Registration Date': u'2016-08-17T01:30:20',
+                                       u'$email': u'dance.troll@yahoo.com',
+                                       u'$region': u'California',
+                                       u'$last_name': u'Cooper',
+                                       u'Experiment Group': u'Group B',
+                                       u'Campaign Name': u'Huge Discounts!',
+                                       u'Referrering Domain': u'http://bing.com',
+                                       u'$city': u'Salinas', u'$first_name': u'Kelly',
+                                       u'$os': u'iPhone OS',
+                                       u'$timezone': u'America/Los_Angeles',
+                                       u'Campaign Source': u'Facebook'}},
+                     {u'$distinct_id': u'34dcb1f3-f6a6-433b-b402-436717ceaa82',
+                      u'$properties': {u'Invited User?': False, u'App Version': 3,
+                                       u'$country_code': u'US', u'$model': u'iPad2,5',
+                                       u'$predict_grade': u'A',
+                                       u'$unsubscribed': u':true',
+                                       u'Registration Date': u'2016-08-16T18:23:01',
+                                       u'$email': u'hacker.lancer@hotmail.com',
+                                       u'$region': u'Pennsylvania',
+                                       u'$last_name': u'Burton',
+                                       u'Campaign Name': u'Super Sale',
+                                       u'Referrering Domain': u'http://facebook.com',
+                                       u'$city': u'Hershey', u'$first_name': u'Kelly',
+                                       u'$os': u'iPhone OS',
+                                       u'$timezone': u'America/New_York',
+                                       u'Campaign Source': u'Facebook'}},
+                     {u'$distinct_id': u'55c86fe3-1f7e-4842-a276-3b6e7ae4456b',
+                      u'$properties': {u'Invited User?': True, u'App Version': 3,
+                                       u'$country_code': u'ID', u'$model': u'iPhone5,2',
+                                       u'$predict_grade': u'A',
+                                       u'$unsubscribed': u':true',
+                                       u'$email': u'giant.coward@aol.com',
+                                       u'$last_name': u'Fernandez',
+                                       u'Campaign Name': u'Huge Discounts!',
+                                       u'Referrering Domain': u'http://facebook.com',
+                                       u'$first_name': u'Kelly', u'$os': u'iPhone OS',
+                                       u'Registration Date': u'2016-08-16T23:57:46',
+                                       u'Campaign Source': u'Facebook'}}]
+        self.import_project.import_people(gold_data)
+        time.sleep(10)
+        test_data = self.import_project.query_engage(params)
+        self.assertItemsEqual(gold_data, test_data)
 
-    # def test__import_data(self):
-    #     self.fail()
