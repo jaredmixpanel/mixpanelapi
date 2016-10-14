@@ -22,6 +22,51 @@ class TestMixpanel(TestCase):
         # For testing token assertion
         self.no_token = Mixpanel('123')
 
+        self.gold_people_items = {u'status': u'ok', u'results': [{u'$distinct_id': u'77d57cbd-ec0b-4e02-93c0-c738a9ed59d8',
+                                                     u'$properties': {u'Invited User?': False, u'App Version': 3,
+                                                                      u'$country_code': u'US', u'$model': u'iPhone5,2',
+                                                                      u'$predict_grade': u'A',
+                                                                      u'$unsubscribed': u':true',
+                                                                      u'Registration Date': u'2016-08-17T01:30:20',
+                                                                      u'$email': u'dance.troll@yahoo.com',
+                                                                      u'$region': u'California',
+                                                                      u'$last_name': u'Cooper',
+                                                                      u'Experiment Group': u'Group B',
+                                                                      u'Campaign Name': u'Huge Discounts!',
+                                                                      u'Referrering Domain': u'http://bing.com',
+                                                                      u'$city': u'Salinas', u'$first_name': u'Kelly',
+                                                                      u'$os': u'iPhone OS',
+                                                                      u'$timezone': u'America/Los_Angeles',
+                                                                      u'Campaign Source': u'Facebook'}},
+                                                    {u'$distinct_id': u'34dcb1f3-f6a6-433b-b402-436717ceaa82',
+                                                     u'$properties': {u'Invited User?': False, u'App Version': 3,
+                                                                      u'$country_code': u'US', u'$model': u'iPad2,5',
+                                                                      u'$predict_grade': u'A',
+                                                                      u'$unsubscribed': u':true',
+                                                                      u'Registration Date': u'2016-08-16T18:23:01',
+                                                                      u'$email': u'hacker.lancer@hotmail.com',
+                                                                      u'$region': u'Pennsylvania',
+                                                                      u'$last_name': u'Burton',
+                                                                      u'Campaign Name': u'Super Sale',
+                                                                      u'Referrering Domain': u'http://facebook.com',
+                                                                      u'$city': u'Hershey', u'$first_name': u'Kelly',
+                                                                      u'$os': u'iPhone OS',
+                                                                      u'$timezone': u'America/New_York',
+                                                                      u'Campaign Source': u'Facebook'}},
+                                                    {u'$distinct_id': u'55c86fe3-1f7e-4842-a276-3b6e7ae4456b',
+                                                     u'$properties': {u'Invited User?': True, u'App Version': 3,
+                                                                      u'$country_code': u'ID', u'$model': u'iPhone5,2',
+                                                                      u'$predict_grade': u'A',
+                                                                      u'$unsubscribed': u':true',
+                                                                      u'$email': u'giant.coward@aol.com',
+                                                                      u'$last_name': u'Fernandez',
+                                                                      u'Campaign Name': u'Huge Discounts!',
+                                                                      u'Referrering Domain': u'http://facebook.com',
+                                                                      u'$first_name': u'Kelly', u'$os': u'iPhone OS',
+                                                                      u'Registration Date': u'2016-08-16T23:57:46',
+                                                                      u'Campaign Source': u'Facebook'}}],
+                     u'session_id': u'1472215655-vkhHzc', u'page_size': 1000, u'total': 3, u'page': 0}
+
     def test_unicode_urlencode(self):
         params = {'$key 1': 'value!', 'key2': '"Hello, World"', '$list': ['a', '%', '_8']}
         encoded_params = 'key2=%22Hello%2C+World%22&%24key+1=value%21&%24list=%5B%22a%22%2C+%22%25%22%2C+%22_8%22%5D'
@@ -340,53 +385,9 @@ class TestMixpanel(TestCase):
 
     def test__get_engage_page(self):
         params = {'where': '(("Kelly" in properties["$first_name"]) and (defined (properties["$first_name"])))'}
-        gold_data = {u'status': u'ok', u'results': [{u'$distinct_id': u'77d57cbd-ec0b-4e02-93c0-c738a9ed59d8',
-                                                     u'$properties': {u'Invited User?': False, u'App Version': 3,
-                                                                      u'$country_code': u'US', u'$model': u'iPhone5,2',
-                                                                      u'$predict_grade': u'A',
-                                                                      u'$unsubscribed': u':true',
-                                                                      u'Registration Date': u'2016-08-17T01:30:20',
-                                                                      u'$email': u'dance.troll@yahoo.com',
-                                                                      u'$region': u'California',
-                                                                      u'$last_name': u'Cooper',
-                                                                      u'Experiment Group': u'Group B',
-                                                                      u'Campaign Name': u'Huge Discounts!',
-                                                                      u'Referrering Domain': u'http://bing.com',
-                                                                      u'$city': u'Salinas', u'$first_name': u'Kelly',
-                                                                      u'$os': u'iPhone OS',
-                                                                      u'$timezone': u'America/Los_Angeles',
-                                                                      u'Campaign Source': u'Facebook'}},
-                                                    {u'$distinct_id': u'34dcb1f3-f6a6-433b-b402-436717ceaa82',
-                                                     u'$properties': {u'Invited User?': False, u'App Version': 3,
-                                                                      u'$country_code': u'US', u'$model': u'iPad2,5',
-                                                                      u'$predict_grade': u'A',
-                                                                      u'$unsubscribed': u':true',
-                                                                      u'Registration Date': u'2016-08-16T18:23:01',
-                                                                      u'$email': u'hacker.lancer@hotmail.com',
-                                                                      u'$region': u'Pennsylvania',
-                                                                      u'$last_name': u'Burton',
-                                                                      u'Campaign Name': u'Super Sale',
-                                                                      u'Referrering Domain': u'http://facebook.com',
-                                                                      u'$city': u'Hershey', u'$first_name': u'Kelly',
-                                                                      u'$os': u'iPhone OS',
-                                                                      u'$timezone': u'America/New_York',
-                                                                      u'Campaign Source': u'Facebook'}},
-                                                    {u'$distinct_id': u'55c86fe3-1f7e-4842-a276-3b6e7ae4456b',
-                                                     u'$properties': {u'Invited User?': True, u'App Version': 3,
-                                                                      u'$country_code': u'ID', u'$model': u'iPhone5,2',
-                                                                      u'$predict_grade': u'A',
-                                                                      u'$unsubscribed': u':true',
-                                                                      u'$email': u'giant.coward@aol.com',
-                                                                      u'$last_name': u'Fernandez',
-                                                                      u'Campaign Name': u'Huge Discounts!',
-                                                                      u'Referrering Domain': u'http://facebook.com',
-                                                                      u'$first_name': u'Kelly', u'$os': u'iPhone OS',
-                                                                      u'Registration Date': u'2016-08-16T23:57:46',
-                                                                      u'Campaign Source': u'Facebook'}}],
-                     u'session_id': u'1472215655-vkhHzc', u'page_size': 1000, u'total': 3, u'page': 0}
 
         test_data = self.mixpanel._get_engage_page(params)
-        for item in gold_data['results']:
+        for item in self.gold_people_items[u'results']:
             self.assertIn(item, test_data['results'])
 
     def test__send_batch(self):
@@ -453,49 +454,7 @@ class TestMixpanel(TestCase):
 
     def test_query_engage(self):
         params = {'where': '(("Kelly" in properties["$first_name"]) and (defined (properties["$first_name"])))'}
-        gold_data = [{u'$distinct_id': u'77d57cbd-ec0b-4e02-93c0-c738a9ed59d8',
-                                                     u'$properties': {u'Invited User?': False, u'App Version': 3,
-                                                                      u'$country_code': u'US', u'$model': u'iPhone5,2',
-                                                                      u'$predict_grade': u'A',
-                                                                      u'$unsubscribed': u':true',
-                                                                      u'Registration Date': u'2016-08-17T01:30:20',
-                                                                      u'$email': u'dance.troll@yahoo.com',
-                                                                      u'$region': u'California',
-                                                                      u'$last_name': u'Cooper',
-                                                                      u'Experiment Group': u'Group B',
-                                                                      u'Campaign Name': u'Huge Discounts!',
-                                                                      u'Referrering Domain': u'http://bing.com',
-                                                                      u'$city': u'Salinas', u'$first_name': u'Kelly',
-                                                                      u'$os': u'iPhone OS',
-                                                                      u'$timezone': u'America/Los_Angeles',
-                                                                      u'Campaign Source': u'Facebook'}},
-                                                    {u'$distinct_id': u'34dcb1f3-f6a6-433b-b402-436717ceaa82',
-                                                     u'$properties': {u'Invited User?': False, u'App Version': 3,
-                                                                      u'$country_code': u'US', u'$model': u'iPad2,5',
-                                                                      u'$predict_grade': u'A',
-                                                                      u'$unsubscribed': u':true',
-                                                                      u'Registration Date': u'2016-08-16T18:23:01',
-                                                                      u'$email': u'hacker.lancer@hotmail.com',
-                                                                      u'$region': u'Pennsylvania',
-                                                                      u'$last_name': u'Burton',
-                                                                      u'Campaign Name': u'Super Sale',
-                                                                      u'Referrering Domain': u'http://facebook.com',
-                                                                      u'$city': u'Hershey', u'$first_name': u'Kelly',
-                                                                      u'$os': u'iPhone OS',
-                                                                      u'$timezone': u'America/New_York',
-                                                                      u'Campaign Source': u'Facebook'}},
-                                                    {u'$distinct_id': u'55c86fe3-1f7e-4842-a276-3b6e7ae4456b',
-                                                     u'$properties': {u'Invited User?': True, u'App Version': 3,
-                                                                      u'$country_code': u'ID', u'$model': u'iPhone5,2',
-                                                                      u'$predict_grade': u'A',
-                                                                      u'$unsubscribed': u':true',
-                                                                      u'$email': u'giant.coward@aol.com',
-                                                                      u'$last_name': u'Fernandez',
-                                                                      u'Campaign Name': u'Huge Discounts!',
-                                                                      u'Referrering Domain': u'http://facebook.com',
-                                                                      u'$first_name': u'Kelly', u'$os': u'iPhone OS',
-                                                                      u'Registration Date': u'2016-08-16T23:57:46',
-                                                                      u'Campaign Source': u'Facebook'}}]
+        gold_data = self.gold_people_items[u'results']
 
         test_data = self.mixpanel.query_engage(params)
         for item in gold_data:
@@ -533,49 +492,7 @@ class TestMixpanel(TestCase):
 
     def test_export_people_to_json(self):
         params = {'where': '(("Kelly" in properties["$first_name"]) and (defined (properties["$first_name"])))'}
-        gold_data = [{u'$distinct_id': u'77d57cbd-ec0b-4e02-93c0-c738a9ed59d8',
-                      u'$properties': {u'Invited User?': False, u'App Version': 3,
-                                       u'$country_code': u'US', u'$model': u'iPhone5,2',
-                                       u'$predict_grade': u'A',
-                                       u'$unsubscribed': u':true',
-                                       u'Registration Date': u'2016-08-17T01:30:20',
-                                       u'$email': u'dance.troll@yahoo.com',
-                                       u'$region': u'California',
-                                       u'$last_name': u'Cooper',
-                                       u'Experiment Group': u'Group B',
-                                       u'Campaign Name': u'Huge Discounts!',
-                                       u'Referrering Domain': u'http://bing.com',
-                                       u'$city': u'Salinas', u'$first_name': u'Kelly',
-                                       u'$os': u'iPhone OS',
-                                       u'$timezone': u'America/Los_Angeles',
-                                       u'Campaign Source': u'Facebook'}},
-                     {u'$distinct_id': u'34dcb1f3-f6a6-433b-b402-436717ceaa82',
-                      u'$properties': {u'Invited User?': False, u'App Version': 3,
-                                       u'$country_code': u'US', u'$model': u'iPad2,5',
-                                       u'$predict_grade': u'A',
-                                       u'$unsubscribed': u':true',
-                                       u'Registration Date': u'2016-08-16T18:23:01',
-                                       u'$email': u'hacker.lancer@hotmail.com',
-                                       u'$region': u'Pennsylvania',
-                                       u'$last_name': u'Burton',
-                                       u'Campaign Name': u'Super Sale',
-                                       u'Referrering Domain': u'http://facebook.com',
-                                       u'$city': u'Hershey', u'$first_name': u'Kelly',
-                                       u'$os': u'iPhone OS',
-                                       u'$timezone': u'America/New_York',
-                                       u'Campaign Source': u'Facebook'}},
-                     {u'$distinct_id': u'55c86fe3-1f7e-4842-a276-3b6e7ae4456b',
-                      u'$properties': {u'Invited User?': True, u'App Version': 3,
-                                       u'$country_code': u'ID', u'$model': u'iPhone5,2',
-                                       u'$predict_grade': u'A',
-                                       u'$unsubscribed': u':true',
-                                       u'$email': u'giant.coward@aol.com',
-                                       u'$last_name': u'Fernandez',
-                                       u'Campaign Name': u'Huge Discounts!',
-                                       u'Referrering Domain': u'http://facebook.com',
-                                       u'$first_name': u'Kelly', u'$os': u'iPhone OS',
-                                       u'Registration Date': u'2016-08-16T23:57:46',
-                                       u'Campaign Source': u'Facebook'}}]
+        gold_data = self.gold_people_items[u'results']
 
         self.mixpanel.export_people('export_people.json', params)
         with open('export_people.json', 'rbU') as test:
@@ -597,8 +514,7 @@ class TestMixpanel(TestCase):
                 test_data = csv.reader(test_file)
                 self.assertItemsEqual(gold_data, test_data)
             finally:
-                pass
-                #os.remove('people_export.csv')
+                os.remove('people_export.csv')
 
     def test_people_operation(self):
         self.assertRaises(AssertionError, self.no_token.people_operation, '$set', {'k', 'v'})
@@ -668,49 +584,7 @@ class TestMixpanel(TestCase):
 
     def test_import_people_csv(self):
         params = {'where': '(("Kelly" in properties["$first_name"]) and (defined (properties["$first_name"])))'}
-        gold_data = [{u'$distinct_id': u'77d57cbd-ec0b-4e02-93c0-c738a9ed59d8',
-                      u'$properties': {u'Invited User?': False, u'App Version': 3,
-                                       u'$country_code': u'US', u'$model': u'iPhone5,2',
-                                       u'$predict_grade': u'A',
-                                       u'$unsubscribed': u':true',
-                                       u'Registration Date': u'2016-08-17T01:30:20',
-                                       u'$email': u'dance.troll@yahoo.com',
-                                       u'$region': u'California',
-                                       u'$last_name': u'Cooper',
-                                       u'Experiment Group': u'Group B',
-                                       u'Campaign Name': u'Huge Discounts!',
-                                       u'Referrering Domain': u'http://bing.com',
-                                       u'$city': u'Salinas', u'$first_name': u'Kelly',
-                                       u'$os': u'iPhone OS',
-                                       u'$timezone': u'America/Los_Angeles',
-                                       u'Campaign Source': u'Facebook'}},
-                     {u'$distinct_id': u'34dcb1f3-f6a6-433b-b402-436717ceaa82',
-                      u'$properties': {u'Invited User?': False, u'App Version': 3,
-                                       u'$country_code': u'US', u'$model': u'iPad2,5',
-                                       u'$predict_grade': u'A',
-                                       u'$unsubscribed': u':true',
-                                       u'Registration Date': u'2016-08-16T18:23:01',
-                                       u'$email': u'hacker.lancer@hotmail.com',
-                                       u'$region': u'Pennsylvania',
-                                       u'$last_name': u'Burton',
-                                       u'Campaign Name': u'Super Sale',
-                                       u'Referrering Domain': u'http://facebook.com',
-                                       u'$city': u'Hershey', u'$first_name': u'Kelly',
-                                       u'$os': u'iPhone OS',
-                                       u'$timezone': u'America/New_York',
-                                       u'Campaign Source': u'Facebook'}},
-                     {u'$distinct_id': u'55c86fe3-1f7e-4842-a276-3b6e7ae4456b',
-                      u'$properties': {u'Invited User?': True, u'App Version': 3,
-                                       u'$country_code': u'ID', u'$model': u'iPhone5,2',
-                                       u'$predict_grade': u'A',
-                                       u'$unsubscribed': u':true',
-                                       u'$email': u'giant.coward@aol.com',
-                                       u'$last_name': u'Fernandez',
-                                       u'Campaign Name': u'Huge Discounts!',
-                                       u'Referrering Domain': u'http://facebook.com',
-                                       u'$first_name': u'Kelly', u'$os': u'iPhone OS',
-                                       u'Registration Date': u'2016-08-16T23:57:46',
-                                       u'Campaign Source': u'Facebook'}}]
+        gold_data = self.gold_people_items[u'results']
         self.import_project.import_people(gold_data)
         time.sleep(10)
         test_data = self.import_project.query_engage(params)
