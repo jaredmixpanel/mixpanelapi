@@ -159,7 +159,7 @@ class Mixpanel(object):
                 item_list = json.load(item_file)
         except ValueError:
             with open(filename, 'rbU') as item_file:
-                reader = csv.reader(item_file,)
+                reader = csv.reader(item_file, )
                 header = reader.next()
                 if 'event' in header:
                     event_index = header.index("event")
@@ -185,7 +185,6 @@ class Mixpanel(object):
         with open(filename, 'rb') as f_in, gzip.open(gzip_filename, 'wb') as f_out:
             shutil.copyfileobj(f_in, f_out)
 
-
     @staticmethod
     def _export_data(data, output_file, format='json', compress=False):
         with open(output_file, 'w+') as output:
@@ -202,7 +201,6 @@ class Mixpanel(object):
         if compress:
             Mixpanel.gzip_file(output_file)
             os.remove(output_file)
-
 
     @staticmethod
     def _prep_event_for_import(event, token, timezone_offset):
@@ -247,6 +245,17 @@ class Mixpanel(object):
         except KeyError:
             return dt
         return dt
+
+    @staticmethod
+    def sum_transactions(profile):
+        total = 0
+        try:
+            transactions = profile['$properties']['$transactions']
+            for t in transactions:
+                total = total + t['$amount']
+        except KeyError:
+            pass
+        return {'Revenue': total}
 
     def _get_engage_page(self, params):
         response = self.request(Mixpanel.API_URL, ['engage'], params)
@@ -329,7 +338,8 @@ class Mixpanel(object):
         response_data = response.read()
         return response_data
 
-    def people_operation(self, operation, value, profiles=None, query_params=None, ignore_alias=False, backup=False, backup_file=None):
+    def people_operation(self, operation, value, profiles=None, query_params=None, ignore_alias=False, backup=False,
+                         backup_file=None):
         """
         Base method for performing any of the People analytics operations
 
@@ -358,7 +368,7 @@ class Mixpanel(object):
 
         if backup:
             if backup_file is None:
-                backup_file = "deletion_backup_" + str(int(time.time())) + ".json"
+                backup_file = "backup_" + str(int(time.time())) + ".json"
             self._export_data(profiles_list, backup_file)
 
         dynamic = isfunction(value)
@@ -367,6 +377,53 @@ class Mixpanel(object):
     def people_delete(self, profiles=None, query_params=None, backup=True, backup_file=None):
         self.people_operation('$delete', '', profiles=profiles, query_params=query_params, ignore_alias=True,
                               backup=backup, backup_file=backup_file)
+
+    def people_set(self, value, profiles=None, query_params=None, ignore_alias=True, backup=True, backup_file=None):
+        self.people_operation('$set', value=value, profiles=profiles, query_params=query_params,
+                              ignore_alias=ignore_alias, backup=backup, backup_file=backup_file)
+
+    def people_set_once(self, value, profiles=None, query_params=None, ignore_alias=True, backup=False,
+                        backup_file=None):
+        self.people_operation('$set_once', value=value, profiles=profiles, query_params=query_params,
+                              ignore_alias=ignore_alias, backup=backup, backup_file=backup_file)
+
+    def people_unset(self, value, profiles=None, query_params=None, ignore_alias=True, backup=True, backup_file=None):
+        self.people_operation('$unset', value=value, profiles=profiles, query_params=query_params,
+                              ignore_alias=ignore_alias, backup=backup, backup_file=backup_file)
+
+    def people_add(self, value, profiles=None, query_params=None, ignore_alias=True, backup=True, backup_file=None):
+        self.people_operation('$add', value=value, profiles=profiles, query_params=query_params,
+                              ignore_alias=ignore_alias, backup=backup, backup_file=backup_file)
+
+    def people_append(self, value, profiles=None, query_params=None, ignore_alias=True, backup=True,
+                      backup_file=None):
+        self.people_operation('$append', value=value, profiles=profiles, query_params=query_params,
+                              ignore_alias=ignore_alias, backup=backup, backup_file=backup_file)
+
+    def people_union(self, value, profiles=None, query_params=None, ignore_alias=True, backup=True, backup_file=None):
+        self.people_operation('$union', value=value, profiles=profiles, query_params=query_params,
+                              ignore_alias=ignore_alias, backup=backup, backup_file=backup_file)
+
+    def people_remove(self, value, profiles=None, query_params=None, ignore_alias=True, backup=True, backup_file=None):
+        self.people_operation('$remove', value=value, profiles=profiles, query_params=query_params,
+                              ignore_alias=ignore_alias, backup=backup, backup_file=backup_file)
+
+    def people_change_property_name(self, old_name, new_name, profiles=None, query_params=None, ignore_alias=True,
+                                    backup=True, backup_file=None, unset=True):
+        if profiles is None and query_params is None:
+            query_params = {'selector': '(defined (properties["' + old_name + '"]))'}
+        self.people_operation('$set', lambda p: {new_name: p['$properties'][old_name]}, query_params=query_params,
+                              ignore_alias=ignore_alias, backup=backup, backup_file=backup_file)
+        if unset:
+            self.people_operation('$unset', [old_name], profiles=profiles, query_params=query_params, backup=False)
+
+    def people_revenue_property_from_transactions(self, profiles=None, query_params=None, ignore_alias=True,
+                                                  backup=True, backup_file=None):
+        if profiles is None and query_params is None:
+            query_params = {'selector': '(defined (properties["$transactions"]))'}
+
+        self.people_operation('$set', Mixpanel.sum_transactions, profiles=profiles, query_params=query_params,
+                              ignore_alias=ignore_alias, backup=backup, backup_file=backup_file)
 
     def deduplicate_people(self, profiles=None, prop_to_match='$email', merge_props=False, case_sensitive=False):
         main_reference = {}
@@ -429,6 +486,9 @@ class Mixpanel(object):
         return paginator.fetch_all(params)
 
     def export_events(self, output_file, params, format='json', compress=False):
+        # Increase timeout to 15 minutes if it's still set to default
+        if self.timeout == 120:
+            self.timeout = 900
         events = self.query_export(params)
         Mixpanel._export_data(events, output_file, format=format, compress=compress)
 
