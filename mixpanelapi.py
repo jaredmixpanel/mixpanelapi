@@ -29,6 +29,8 @@ class Mixpanel(object):
     DATA_URL = 'https://data.mixpanel.com/api'
     IMPORT_URL = 'https://api.mixpanel.com'
     VERSION = '2.0'
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.WARNING)
 
     def __init__(self, api_secret, token=None, timeout=120, pool_size=None, max_retries=10, debug=False):
         self.api_secret = api_secret
@@ -38,10 +40,15 @@ class Mixpanel(object):
             pool_size = cpu_count() * 2
         self.pool_size = pool_size
         self.max_retries = max_retries
-        if debug:
-            logging.basicConfig(format='%(levelname)s: %(message)s', level=logging.DEBUG)
+        log_level = Mixpanel.logger.getEffectiveLevel()
+        ch = logging.StreamHandler()
+        formatter = logging.Formatter('%(levelname)s: %(message)s')
+        ch.setFormatter(formatter)
+        Mixpanel.logger.addHandler(ch)
+        if debug and log_level > 10:
+            Mixpanel.logger.setLevel(logging.DEBUG)
         else:
-            logging.basicConfig(format='%(levelname)s: %(message)s', level=logging.WARNING)
+            Mixpanel.logger.setLevel(logging.WARNING)
 
     @staticmethod
     def unicode_urlencode(params):
@@ -57,9 +64,9 @@ class Mixpanel(object):
     @staticmethod
     def response_handler_callback(response):
         if json.loads(response)['status'] != 1:
-            logging.warning("Bad API response: " + response)
+            Mixpanel.logger.warning("Bad API response: " + response)
             raise RuntimeError('import failed')
-        logging.debug("API Response: " + response)
+        Mixpanel.logger.debug("API Response: " + response)
 
     @staticmethod
     def write_items_to_csv(items, output_file):
@@ -147,7 +154,7 @@ class Mixpanel(object):
         elif isinstance(arg, list):
             item_list = arg
         else:
-            logging.warning("data parameter must be a filename or a list of items")
+            Mixpanel.logger.warning("data parameter must be a filename or a list of items")
 
         return item_list
 
@@ -175,7 +182,7 @@ class Mixpanel(object):
                         profile = Mixpanel.people_object_from_csv_row(row, header, distinct_id_index)
                         item_list.append(profile)
         except IOError:
-            logging.warning("Error loading data from file: " + filename)
+            Mixpanel.logger.warning("Error loading data from file: " + filename)
 
         return item_list
 
@@ -195,7 +202,7 @@ class Mixpanel(object):
             else:
                 msg = "Invalid format - must be 'json' or 'csv': format = " + str(format) + '\n' \
                       + "Dumping json to " + output_file
-                logging.warning(msg)
+                Mixpanel.logger.warning(msg)
                 json.dump(data, output)
 
         if compress:
@@ -205,7 +212,7 @@ class Mixpanel(object):
     @staticmethod
     def _prep_event_for_import(event, token, timezone_offset):
         if ('time' not in event['properties']) or ('distinct_id' not in event['properties']):
-            logging.warning('Event missing time or distinct_id property, dumping to invalid_events.txt')
+            Mixpanel.logger.warning('Event missing time or distinct_id property, dumping to invalid_events.txt')
             with open('invalid_events.txt', 'a') as invalid:
                 json.dump(event, invalid)
                 invalid.write('\n')
@@ -263,7 +270,7 @@ class Mixpanel(object):
         if 'results' in data:
             return data
         else:
-            logging.warning("Invalid response from /engage: " + response)
+            Mixpanel.logger.warning("Invalid response from /engage: " + response)
 
     def _dispatch_batches(self, endpoint, item_list, prep_args):
         pool = ThreadPool(processes=self.pool_size)
@@ -274,7 +281,7 @@ class Mixpanel(object):
         elif endpoint == 'engage':
             prep_function = Mixpanel._prep_params_for_profile
         else:
-            logging.warning('endpoint must be "import" or "engage", found: ' + str(endpoint))
+            Mixpanel.logger.warning('endpoint must be "import" or "engage", found: ' + str(endpoint))
             return
 
         for item in item_list:
@@ -295,15 +302,15 @@ class Mixpanel(object):
         try:
             response = self.request(Mixpanel.IMPORT_URL, [endpoint], payload, 'POST')
             msg = "Sent " + str(len(batch)) + " items on " + time.strftime("%Y-%m-%d %H:%M:%S") + "!"
-            logging.debug(msg)
+            Mixpanel.logger.debug(msg)
             return response
         except urllib2.HTTPError as err:
             if err.code == 503:
                 if retries < self.max_retries:
-                    logging.warning("HTTP Error 503: Retry #" + str(retries + 1))
+                    Mixpanel.logger.warning("HTTP Error 503: Retry #" + str(retries + 1))
                     self._send_batch(endpoint, batch, retries + 1)
                 else:
-                    logging.warning("Failed to import batch, dumping to file import_backup.txt")
+                    Mixpanel.logger.warning("Failed to import batch, dumping to file import_backup.txt")
                     with open('import_backup.txt', 'a') as backup:
                         json.dump(batch, backup)
                         backup.write('\n')
@@ -331,7 +338,7 @@ class Mixpanel(object):
             data = None
             request_url = '/'.join(
                 [base_url, str(Mixpanel.VERSION)] + path_components) + '/?' + Mixpanel.unicode_urlencode(params)
-        logging.debug("Request URL: " + request_url)
+        Mixpanel.logger.debug("Request URL: " + request_url)
         headers = {'Authorization': 'Basic {encoded_secret}'.format(encoded_secret=base64.b64encode(self.api_secret))}
         request = urllib2.Request(request_url, data, headers)
         response = urllib2.urlopen(request, timeout=self.timeout)
@@ -356,15 +363,15 @@ class Mixpanel(object):
         """
         assert self.token, "Project token required for People operation!"
         if profiles is not None and query_params is not None:
-            logging.warning("profiles and query_params both provided, please use one or the other")
+            Mixpanel.logger.warning("profiles and query_params both provided, please use one or the other")
             return
 
-        profiles_list = []
         if profiles:
             profiles_list = Mixpanel.list_from_argument(profiles)
-
-        if query_params is not None:
+        elif query_params is not None:
             profiles_list = self.query_engage(query_params)
+        else:
+            profiles_list = self.query_engage()
 
         if backup:
             if backup_file is None:
